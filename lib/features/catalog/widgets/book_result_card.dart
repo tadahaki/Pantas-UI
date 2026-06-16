@@ -6,11 +6,13 @@ import '../../../shared/widgets/status_badge.dart';
 class BookResultCard extends StatelessWidget {
   final MockBook book;
   final VoidCallback onTap;
+  final bool showStatus;
 
   const BookResultCard({
     super.key,
     required this.book,
     required this.onTap,
+    this.showStatus = true,
   });
 
   @override
@@ -79,21 +81,23 @@ class BookResultCard extends StatelessWidget {
                 fontSize: 11,
               ),
             ),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                StatusBadge(
-                  label: book.availability,
-                  color: book.isAvailable ? AppColors.success : AppColors.warning,
-                ),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  size: 16,
-                  color: AppColors.textMuted,
-                ),
-              ],
-            ),
+            if (showStatus) ...[
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  StatusBadge(
+                    label: book.availability,
+                    color: book.isAvailable ? AppColors.success : AppColors.warning,
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    size: 16,
+                    color: AppColors.textMuted,
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

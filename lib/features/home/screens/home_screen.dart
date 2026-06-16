@@ -83,6 +83,7 @@ class HomeScreen extends StatelessWidget {
                           book: book,
                           onTap: () =>
                               context.go('/book_details?id=${book.id}'),
+                          showStatus: false,
                         );
                       },
                     ),
