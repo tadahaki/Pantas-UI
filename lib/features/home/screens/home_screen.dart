@@ -1,52 +1,51 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../models/book.dart';
+import '../../../services/catalog_service.dart';
 import '../../../shared/widgets/section_title.dart';
-import '../../../shared/models/mock_book.dart';
 import '../../../features/catalog/widgets/book_result_card.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
-  List<MockBook> get _newArrivals => const [
-    MockBook(
-      id: '1',
-      title: 'Introduction to Filipino Studies',
-      author: 'Maria Dela Cruz',
-      callNumber: 'QA 650 .D45',
-      availability: 'Available',
-      coverUrl: '',
-      year: '2022',
-      description: 'A modern guide to Philippine culture and literature.',
-      copies: 5,
-      isAvailable: true,
-    ),
-    MockBook(
-      id: '2',
-      title: 'Digital Libraries in Education',
-      author: 'Juan Santos',
-      callNumber: 'Z 678 .S26',
-      availability: 'Available',
-      coverUrl: '',
-      year: '2023',
-      description: 'Strategies for managing digital collections in schools.',
-      copies: 3,
-      isAvailable: true,
-    ),
-    MockBook(
-      id: '3',
-      title: 'Research Methods in Social Sciences',
-      author: 'Elena Reyes',
-      callNumber: 'H 62 .R49',
-      availability: 'Available',
-      coverUrl: '',
-      year: '2023',
-      description:
-          'Comprehensive guide to qualitative and quantitative methods.',
-      copies: 2,
-      isAvailable: true,
-    ),
-  ];
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final _catalogService = CatalogService();
+  List<Book> _newArrivals = const [];
+  bool _isLoadingNewArrivals = true;
+  String? _newArrivalsError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNewArrivals();
+  }
+
+  Future<void> _loadNewArrivals() async {
+    setState(() {
+      _isLoadingNewArrivals = true;
+      _newArrivalsError = null;
+    });
+
+    try {
+      final books = await _catalogService.getNewArrivals(limit: 10);
+      if (!mounted) return;
+      setState(() {
+        _newArrivals = books;
+        _isLoadingNewArrivals = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _newArrivalsError = 'Unable to load new arrivals.';
+        _isLoadingNewArrivals = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,29 +70,63 @@ class HomeScreen extends StatelessWidget {
                     onAction: () => context.go('/search'),
                   ),
                   const SizedBox(height: 14),
-                  SizedBox(
-                    height: 218,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: _newArrivals.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 14),
-                      itemBuilder: (context, index) {
-                        final book = _newArrivals[index];
-                        return BookResultCard(
-                          book: book,
-                          onTap: () =>
-                              context.go('/book_details?id=${book.id}'),
-                          showStatus: false,
-                        );
-                      },
-                    ),
-                  ),
+                  _buildNewArrivalsList(context),
                   const SizedBox(height: 8),
                 ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildNewArrivalsList(BuildContext context) {
+    if (_isLoadingNewArrivals) {
+      return const SizedBox(
+        height: 218,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_newArrivalsError != null) {
+      return SizedBox(
+        height: 218,
+        child: Center(
+          child: TextButton.icon(
+            onPressed: _loadNewArrivals,
+            icon: const Icon(Icons.refresh_rounded),
+            label: Text(_newArrivalsError!),
+          ),
+        ),
+      );
+    }
+
+    if (_newArrivals.isEmpty) {
+      return const SizedBox(
+        height: 218,
+        child: Center(
+          child: Text(
+            'No new arrivals yet.',
+            style: TextStyle(color: AppColors.textMuted),
+          ),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 218,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _newArrivals.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 14),
+        itemBuilder: (context, index) {
+          final book = _newArrivals[index];
+          return BookResultCard(
+            book: book,
+            onTap: () => context.go('/book_details?id=${book.id}'),
+          );
+        },
       ),
     );
   }

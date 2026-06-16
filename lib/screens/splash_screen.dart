@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 
@@ -9,15 +11,15 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  Timer? _authCheckTimer;
+
   @override
   void initState() {
     super.initState();
-    _checkAuthentication();
+    _authCheckTimer = Timer(const Duration(seconds: 2), _checkAuthentication);
   }
 
   Future<void> _checkAuthentication() async {
-    await Future.delayed(const Duration(seconds: 2));
-    
     if (!mounted) return;
 
     final authService = AuthService();
@@ -30,6 +32,12 @@ class _SplashScreenState extends State<SplashScreen> {
     } else {
       Navigator.of(context).pushReplacementNamed('/login');
     }
+  }
+
+  @override
+  void dispose() {
+    _authCheckTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -47,9 +55,9 @@ class _SplashScreenState extends State<SplashScreen> {
             const SizedBox(height: 20),
             Text(
               'PANTAS',
-              style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
             SizedBox(

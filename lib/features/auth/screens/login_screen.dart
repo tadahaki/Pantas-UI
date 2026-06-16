@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -13,12 +15,46 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isLoading = false;
 
   @override
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _login() async {
+    if (emailController.text.trim().isEmpty ||
+        passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter your email and password.')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      await AuthService().login(emailController.text, passwordController.text);
+
+      if (!mounted) return;
+      context.go('/home');
+    } on ApiException catch (exception) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(exception.validationSummary)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to sign in. Please try again.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -146,15 +182,13 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 4),
           const Text(
             'Sign in to your library account',
-            style: TextStyle(
-              fontSize: 14,
-              color: AppColors.textMuted,
-            ),
+            style: TextStyle(fontSize: 14, color: AppColors.textMuted),
           ),
           const SizedBox(height: 28),
           TextField(
             controller: emailController,
             keyboardType: TextInputType.emailAddress,
+            enabled: !_isLoading,
             decoration: InputDecoration(
               labelText: 'Email or Student ID',
               prefixIcon: const Icon(Icons.badge_outlined, size: 20),
@@ -174,6 +208,7 @@ class _LoginScreenState extends State<LoginScreen> {
           TextField(
             controller: passwordController,
             obscureText: _obscurePassword,
+            enabled: !_isLoading,
             decoration: InputDecoration(
               labelText: 'Password',
               prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
@@ -205,10 +240,7 @@ class _LoginScreenState extends State<LoginScreen> {
               onPressed: () {},
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.primary,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 4,
-                  vertical: 8,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
               ),
               child: const Text(
                 'Forgot Password?',
@@ -233,7 +265,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ],
             ),
             child: ElevatedButton(
-              onPressed: () => context.go('/home'),
+              onPressed: _isLoading ? null : _login,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.transparent,
                 shadowColor: Colors.transparent,
@@ -241,14 +273,23 @@ class _LoginScreenState extends State<LoginScreen> {
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
-              child: const Text(
-                'Sign In',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text(
+                      'Sign In',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
             ),
           ),
           const SizedBox(height: 20),

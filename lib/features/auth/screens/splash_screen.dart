@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
@@ -16,6 +18,7 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
   late Animation<double> _slideAnimation;
+  Timer? _authCheckTimer;
 
   @override
   void initState() {
@@ -43,11 +46,13 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
     _controller.forward();
-    _checkAuthentication();
+    _authCheckTimer = Timer(
+      const Duration(milliseconds: 2200),
+      _checkAuthentication,
+    );
   }
 
   Future<void> _checkAuthentication() async {
-    await Future.delayed(const Duration(milliseconds: 2200));
     if (!mounted) return;
     final authService = AuthService();
     final isAuthenticated = await authService.isAuthenticated();
@@ -61,6 +66,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
+    _authCheckTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -138,8 +144,7 @@ class _SplashScreenState extends State<SplashScreen>
                         child: CircularProgressIndicator(
                           color: AppColors.accent,
                           strokeWidth: 2.5,
-                          backgroundColor:
-                              Colors.white.withValues(alpha: 0.15),
+                          backgroundColor: Colors.white.withValues(alpha: 0.15),
                         ),
                       ),
                     ],
