@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../shared/models/mock_book.dart';
+import '../../../models/book.dart';
+import '../../../services/catalog_service.dart';
 import '../widgets/book_result_card.dart';
 import '../../catalog/widgets/catalog_filter_sheet.dart';
 
@@ -13,87 +16,68 @@ class CatalogSearchScreen extends StatefulWidget {
 }
 
 class _CatalogSearchScreenState extends State<CatalogSearchScreen> {
+  final _catalogService = CatalogService();
   final TextEditingController _searchController = TextEditingController();
   int _selectedSegment = 0;
+  List<Book> _results = const [];
+  bool _isLoading = true;
+  String? _errorMessage;
+  Timer? _searchDebounce;
 
-  static const List<MockBook> _mockBooks = [
-    MockBook(
-      id: '1',
-      title: 'Library Science Essentials',
-      author: 'Anna Reyes',
-      callNumber: 'Z 675 .R49',
-      availability: 'Available',
-      coverUrl: '',
-      year: '2023',
-      description: 'Foundations and practice for modern libraries.',
-      copies: 4,
-      isAvailable: true,
-    ),
-    MockBook(
-      id: '2',
-      title: 'Philippine History for Students',
-      author: 'Jose Rizal Jr.',
-      callNumber: 'DS 653 .H58',
-      availability: 'Checked Out',
-      coverUrl: '',
-      year: '2021',
-      description: 'A user-friendly guide to local history.',
-      copies: 0,
-      isAvailable: false,
-    ),
-    MockBook(
-      id: '3',
-      title: 'Introduction to Filipino Studies',
-      author: 'Maria Dela Cruz',
-      callNumber: 'QA 650 .D45',
-      availability: 'Available',
-      coverUrl: '',
-      year: '2022',
-      description: 'A modern guide to Philippine culture and literature.',
-      copies: 5,
-      isAvailable: true,
-    ),
-  ];
-
-  List<MockBook> get _filtered => _mockBooks
-      .where(
-        (b) =>
-            b.title.toLowerCase().contains(_searchController.text.toLowerCase()) ||
-            b.author.toLowerCase().contains(_searchController.text.toLowerCase()),
-      )
-      .toList();
+  @override
+  void initState() {
+    super.initState();
+    _searchCatalog();
+  }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
+  Future<void> _searchCatalog() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final results = await _catalogService.searchBooks(
+        _searchController.text,
+        format: _selectedSegment == 1 ? 'ebooks' : null,
+        perPage: 20,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _results = results;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'Unable to search catalog.';
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _scheduleSearch() {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), _searchCatalog);
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
-    final results = _filtered;
-
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
         children: [
           _buildHeader(context),
-          Expanded(
-            child: results.isEmpty
-                ? _buildEmptyState()
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-                    itemCount: results.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 14),
-                    itemBuilder: (context, index) {
-                      final book = results[index];
-                      return BookResultCard(
-                        book: book,
-                        onTap: () => context.go('/book_details?id=${book.id}'),
-                      );
-                    },
-                  ),
-          ),
+          Expanded(child: _buildResultsList()),
         ],
       ),
     );
@@ -140,7 +124,7 @@ class _CatalogSearchScreenState extends State<CatalogSearchScreen> {
                       child: TextField(
                         controller: _searchController,
                         style: const TextStyle(color: Colors.white),
-                        onChanged: (_) => setState(() {}),
+                        onChanged: (_) => _scheduleSearch(),
                         decoration: InputDecoration(
                           hintText: 'Search…',
                           hintStyle: TextStyle(
@@ -155,7 +139,7 @@ class _CatalogSearchScreenState extends State<CatalogSearchScreen> {
                               ? GestureDetector(
                                   onTap: () {
                                     _searchController.clear();
-                                    setState(() {});
+                                    _searchCatalog();
                                   },
                                   child: Icon(
                                     Icons.close_rounded,
@@ -206,13 +190,19 @@ class _CatalogSearchScreenState extends State<CatalogSearchScreen> {
                   _SegmentChip(
                     label: 'Books',
                     isSelected: _selectedSegment == 0,
-                    onTap: () => setState(() => _selectedSegment = 0),
+                    onTap: () {
+                      setState(() => _selectedSegment = 0);
+                      _searchCatalog();
+                    },
                   ),
                   const SizedBox(width: 8),
                   _SegmentChip(
                     label: 'E-Books',
                     isSelected: _selectedSegment == 1,
-                    onTap: () => setState(() => _selectedSegment = 1),
+                    onTap: () {
+                      setState(() => _selectedSegment = 1);
+                      _searchCatalog();
+                    },
                   ),
                 ],
               ),
@@ -221,6 +211,39 @@ class _CatalogSearchScreenState extends State<CatalogSearchScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildResultsList() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_errorMessage != null) {
+      return Center(
+        child: TextButton.icon(
+          onPressed: _searchCatalog,
+          icon: const Icon(Icons.refresh_rounded),
+          label: Text(_errorMessage!),
+        ),
+      );
+    }
+
+    if (_results.isEmpty) {
+      return _buildEmptyState();
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+      itemCount: _results.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 14),
+      itemBuilder: (context, index) {
+        final book = _results[index];
+        return BookResultCard(
+          book: book,
+          onTap: () => context.go('/book_details?id=${book.id}'),
+        );
+      },
     );
   }
 
@@ -281,7 +304,9 @@ class _SegmentChip extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.12),
+          color: isSelected
+              ? Colors.white
+              : Colors.white.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(

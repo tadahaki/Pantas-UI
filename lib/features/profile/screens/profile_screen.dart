@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../models/user.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/user_service.dart';
 
@@ -15,8 +17,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _userService = UserService();
   final _authService = AuthService();
   bool _isLoading = true;
-  String? _userName;
-  String? _email;
+  User? _user;
 
   @override
   void initState() {
@@ -29,13 +30,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final user = await _userService.getCurrentUser();
       if (mounted) {
         setState(() {
-          _userName = user?.name ?? 'User';
-          _email = user?.email ?? '';
+          _user = user;
           _isLoading = false;
         });
       }
+    } on ApiException catch (exception) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      if (exception.isUnauthenticated) {
+        context.go('/login');
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(exception.message)));
     } catch (_) {
-      if (mounted) setState(() => _isLoading = false);
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Unable to load profile.')));
     }
   }
 
@@ -46,9 +60,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context.go('/login');
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to logout')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Failed to logout')));
       }
     }
   }
@@ -56,12 +70,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final initials = (_userName ?? 'U')
+    final userName = _user?.name.isNotEmpty == true ? _user!.name : 'User';
+    final initials = userName
         .split(' ')
         .take(2)
         .map((w) => w.isNotEmpty ? w[0].toUpperCase() : '')
@@ -89,7 +102,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _ProfileTile(
                       icon: Icons.lock_outline_rounded,
                       label: 'Change Password',
-                      onTap: () {},
+                      onTap: _showChangePasswordDialog,
                     ),
                   ]),
                   const SizedBox(height: 16),
@@ -113,6 +126,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildHeader(String initials) {
+    final userName = _user?.name.isNotEmpty == true ? _user!.name : 'User';
+    final email = _user?.email ?? '';
+    final status = _user?.accountStatus ?? 'Active';
+
     return Container(
       decoration: const BoxDecoration(gradient: AppColors.heroGradient),
       child: SafeArea(
@@ -141,9 +158,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       color: AppColors.successLight,
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: const Text(
-                      'Active',
-                      style: TextStyle(
+                    child: Text(
+                      status,
+                      style: const TextStyle(
                         color: AppColors.success,
                         fontWeight: FontWeight.w700,
                         fontSize: 11,
@@ -180,7 +197,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 14),
               Text(
-                _userName ?? 'User',
+                userName,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 20,
@@ -189,7 +206,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                _email ?? '',
+                email,
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.6),
                   fontSize: 13,
@@ -203,6 +220,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildQrCard() {
+    final studentNumber =
+        _user?.studentNumber ?? _user?.studentId ?? 'Not linked';
+    final courseYear = [
+      _user?.course,
+      _user?.year,
+    ].where((value) => value != null && value.isNotEmpty).join(' - ');
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -241,10 +265,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 child: const Text(
                   'Tap to expand',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textMuted,
-                  ),
+                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
                 ),
               ),
             ],
@@ -265,12 +286,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           const SizedBox(height: 12),
+          Text(
+            studentNumber,
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (courseYear.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              courseYear,
+              style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+            ),
+          ],
+          const SizedBox(height: 12),
           const Text(
             'Scan at the library desk',
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.textMuted,
-            ),
+            style: TextStyle(fontSize: 12, color: AppColors.textMuted),
           ),
         ],
       ),
@@ -330,11 +364,187 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.danger,
-          side: BorderSide(
-            color: AppColors.danger.withValues(alpha: 0.5),
-          ),
+          side: BorderSide(color: AppColors.danger.withValues(alpha: 0.5)),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showChangePasswordDialog() async {
+    final currentPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    bool obscureCurrent = true;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+    bool isSubmitting = false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: !isSubmitting,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (builderContext, setDialogState) {
+            Future<void> submit() async {
+              final newPassword = newPasswordController.text;
+              final confirmPassword = confirmPasswordController.text;
+
+              if (currentPasswordController.text.isEmpty ||
+                  newPassword.isEmpty ||
+                  confirmPassword.isEmpty) {
+                ScaffoldMessenger.of(builderContext).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please fill in all password fields.'),
+                  ),
+                );
+                return;
+              }
+
+              if (newPassword != confirmPassword) {
+                ScaffoldMessenger.of(builderContext).showSnackBar(
+                  const SnackBar(content: Text('New passwords do not match.')),
+                );
+                return;
+              }
+
+              setDialogState(() => isSubmitting = true);
+
+              try {
+                await _userService.updatePassword(
+                  currentPasswordController.text,
+                  newPassword,
+                );
+
+                if (!mounted || !dialogContext.mounted) return;
+                Navigator.of(dialogContext).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Password changed. Please log in again.'),
+                  ),
+                );
+                context.go('/login');
+              } on ApiException catch (exception) {
+                if (!mounted || !dialogContext.mounted) return;
+                setDialogState(() => isSubmitting = false);
+                ScaffoldMessenger.of(builderContext).showSnackBar(
+                  SnackBar(content: Text(exception.validationSummary)),
+                );
+              } catch (_) {
+                if (!mounted || !dialogContext.mounted) return;
+                setDialogState(() => isSubmitting = false);
+                ScaffoldMessenger.of(builderContext).showSnackBar(
+                  const SnackBar(content: Text('Unable to change password.')),
+                );
+              }
+            }
+
+            return AlertDialog(
+              backgroundColor: AppColors.card,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              title: const Text(
+                'Change Password',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _PasswordField(
+                    controller: currentPasswordController,
+                    label: 'Current password',
+                    obscureText: obscureCurrent,
+                    onToggle: () =>
+                        setDialogState(() => obscureCurrent = !obscureCurrent),
+                  ),
+                  const SizedBox(height: 12),
+                  _PasswordField(
+                    controller: newPasswordController,
+                    label: 'New password',
+                    obscureText: obscureNew,
+                    onToggle: () =>
+                        setDialogState(() => obscureNew = !obscureNew),
+                  ),
+                  const SizedBox(height: 12),
+                  _PasswordField(
+                    controller: confirmPasswordController,
+                    label: 'Confirm new password',
+                    obscureText: obscureConfirm,
+                    onToggle: () =>
+                        setDialogState(() => obscureConfirm = !obscureConfirm),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: isSubmitting ? null : submit,
+                  child: isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    currentPasswordController.dispose();
+    newPasswordController.dispose();
+    confirmPasswordController.dispose();
+  }
+}
+
+class _PasswordField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final bool obscureText;
+  final VoidCallback onToggle;
+
+  const _PasswordField({
+    required this.controller,
+    required this.label,
+    required this.obscureText,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      obscureText: obscureText,
+      decoration: InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: AppColors.surface,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+        suffixIcon: IconButton(
+          onPressed: onToggle,
+          icon: Icon(
+            obscureText
+                ? Icons.visibility_off_outlined
+                : Icons.visibility_outlined,
+            size: 20,
           ),
         ),
       ),

@@ -1,17 +1,13 @@
 import 'package:flutter/material.dart';
-import '../../../shared/models/mock_book.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../models/book.dart';
 import '../../../shared/widgets/status_badge.dart';
 
 class BookResultCard extends StatelessWidget {
-  final MockBook book;
+  final Book book;
   final VoidCallback onTap;
 
-  const BookResultCard({
-    super.key,
-    required this.book,
-    required this.onTap,
-  });
+  const BookResultCard({super.key, required this.book, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -38,25 +34,7 @@ class BookResultCard extends StatelessWidget {
             // Cover image
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                'assets/defaultBook.png',
-                height: 100,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => Container(
-                  height: 100,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.menu_book_rounded,
-                    size: 40,
-                    color: AppColors.primary,
-                  ),
-                ),
-              ),
+              child: _BookCover(coverUrl: book.coverImage),
             ),
             const SizedBox(height: 10),
             Text(
@@ -74,10 +52,7 @@ class BookResultCard extends StatelessWidget {
               book.author,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.textMuted,
-                fontSize: 11,
-              ),
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
             ),
             const SizedBox(height: 10),
             Row(
@@ -85,7 +60,9 @@ class BookResultCard extends StatelessWidget {
               children: [
                 StatusBadge(
                   label: book.availability,
-                  color: book.isAvailable ? AppColors.success : AppColors.warning,
+                  color: book.isAvailable
+                      ? AppColors.success
+                      : AppColors.warning,
                 ),
                 const Icon(
                   Icons.chevron_right_rounded,
@@ -96,6 +73,49 @@ class BookResultCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _BookCover extends StatelessWidget {
+  final String? coverUrl;
+
+  const _BookCover({required this.coverUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    if (coverUrl != null && coverUrl!.isNotEmpty) {
+      return Image.network(
+        coverUrl!,
+        height: 100,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _fallbackCover(),
+      );
+    }
+
+    return Image.asset(
+      'assets/defaultBook.png',
+      height: 100,
+      width: double.infinity,
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => _fallbackCover(),
+    );
+  }
+
+  Widget _fallbackCover() {
+    return Container(
+      height: 100,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Icon(
+        Icons.menu_book_rounded,
+        size: 40,
+        color: AppColors.primary,
       ),
     );
   }

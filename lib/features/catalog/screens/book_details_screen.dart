@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../shared/models/mock_book.dart';
+import '../../../models/book.dart';
+import '../../../services/borrow_service.dart';
+import '../../../services/catalog_service.dart';
 
 class BookDetailsScreen extends StatefulWidget {
   final String bookId;
@@ -12,53 +14,18 @@ class BookDetailsScreen extends StatefulWidget {
 
 class _BookDetailsScreenState extends State<BookDetailsScreen>
     with SingleTickerProviderStateMixin {
+  final _catalogService = CatalogService();
+  final _borrowService = BorrowService();
   late TabController _tabController;
-
-  MockBook get mockBook => const MockBook(
-        id: '1',
-        title: 'Research Methods in Education',
-        author: 'Cohen, Louis',
-        callNumber: 'LB1028 .C577 2018',
-        availability: 'On-Shelf',
-        coverUrl: '',
-        year: '2018',
-        description:
-            'Research Methods in Education is an essential guide for students and researchers in education. This comprehensive text covers a wide range of both qualitative and quantitative research methods including surveys, case studies, experiments, and action research. The book provides practical guidance on designing studies, collecting data, and interpreting results in educational contexts.',
-        copies: 3,
-        isAvailable: true,
-      );
-
-  static const List<Map<String, String>> _holdings = [
-    {
-      'accession': 'GG-2024-0016',
-      'callNumber': 'LB1028\n.C577 2018',
-      'volume': '—',
-      'copy': '—',
-      'collection': 'Research in\nEducation',
-      'shelving': 'Academic Library\n— Main stacks',
-      'circType': 'Regular\ncirculation',
-      'circStatus': 'On-Shelf',
-      'barcode': 'BC-GG-00016',
-      'rfid': 'RFID-GG-00016',
-    },
-    {
-      'accession': 'GG-2024-0017',
-      'callNumber': 'LB1028\n.C577 2018',
-      'volume': '—',
-      'copy': '2',
-      'collection': 'Research in\nEducation',
-      'shelving': 'Academic Library\n— Main stacks',
-      'circType': 'Regular\ncirculation',
-      'circStatus': 'On-Shelf',
-      'barcode': 'BC-GG-00017',
-      'rfid': 'RFID-GG-00017',
-    },
-  ];
+  BookDetails? _details;
+  bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadBookDetails();
   }
 
   @override
@@ -67,37 +34,72 @@ class _BookDetailsScreenState extends State<BookDetailsScreen>
     super.dispose();
   }
 
+  Future<void> _loadBookDetails() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final details = await _catalogService.getBookDetail(widget.bookId);
+      if (!mounted) return;
+      setState(() {
+        _details = details;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'Unable to load book details.';
+        _isLoading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Column(
-        children: [
-          _buildHeader(context),
-          _buildTabBar(),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage != null
+          ? Center(
+              child: TextButton.icon(
+                onPressed: _loadBookDetails,
+                icon: const Icon(Icons.refresh_rounded),
+                label: Text(_errorMessage!),
+              ),
+            )
+          : Column(
               children: [
-                _buildHoldingsTab(),
-                _buildDescriptionTab(),
-                _buildMarcViewTab(),
+                _buildHeader(context),
+                _buildTabBar(),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildHoldingsTab(),
+                      _buildDescriptionTab(),
+                      _buildMarcViewTab(),
+                    ],
+                  ),
+                ),
               ],
             ),
-          ),
-        ],
-      ),
     );
   }
 
   Widget _buildHeader(BuildContext context) {
+    final details = _details!;
+    final book = details.book;
+    final description = details.description;
+
     return Container(
       decoration: const BoxDecoration(gradient: AppColors.heroGradient),
       child: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            // Top bar with back button
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
               child: Row(
@@ -112,7 +114,7 @@ class _BookDetailsScreenState extends State<BookDetailsScreen>
                   ),
                   Expanded(
                     child: Text(
-                      mockBook.title,
+                      book.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -125,13 +127,11 @@ class _BookDetailsScreenState extends State<BookDetailsScreen>
                 ],
               ),
             ),
-            // Book info card
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Book cover
                   Container(
                     width: 110,
                     height: 150,
@@ -150,31 +150,15 @@ class _BookDetailsScreenState extends State<BookDetailsScreen>
                         ),
                       ],
                     ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Image.asset(
-                          'assets/defaultBook.png',
-                          width: 90,
-                          height: 110,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, _, _) => const Icon(
-                            Icons.menu_book_rounded,
-                            size: 48,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
+                    child: _BookCover(coverUrl: book.coverImage),
                   ),
                   const SizedBox(width: 18),
-                  // Book meta
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          mockBook.title,
+                          book.title,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 18,
@@ -184,19 +168,23 @@ class _BookDetailsScreenState extends State<BookDetailsScreen>
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          mockBook.author,
+                          book.author,
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.7),
                             fontSize: 14,
                           ),
                         ),
                         const SizedBox(height: 16),
-                        _buildMetaRow('Main author', mockBook.author),
+                        _buildMetaRow('Main author', book.author),
                         const SizedBox(height: 8),
-                        _buildMetaRow('Format', 'Printed'),
+                        _buildMetaRow('Format', description.format),
                         const SizedBox(height: 8),
                         _buildMetaRow(
-                            'Published', 'Routledge ${mockBook.year}'),
+                          'Published',
+                          description.published.isNotEmpty
+                              ? description.published
+                              : '${book.year}',
+                        ),
                       ],
                     ),
                   ),
@@ -244,10 +232,7 @@ class _BookDetailsScreenState extends State<BookDetailsScreen>
         controller: _tabController,
         labelColor: AppColors.primary,
         unselectedLabelColor: AppColors.textMuted,
-        labelStyle: const TextStyle(
-          fontWeight: FontWeight.w700,
-          fontSize: 13,
-        ),
+        labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
         unselectedLabelStyle: const TextStyle(
           fontWeight: FontWeight.w500,
           fontSize: 13,
@@ -264,12 +249,13 @@ class _BookDetailsScreenState extends State<BookDetailsScreen>
   }
 
   Widget _buildHoldingsTab() {
+    final copies = _details!.copies;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Section header
           Row(
             children: [
               Container(
@@ -282,7 +268,7 @@ class _BookDetailsScreenState extends State<BookDetailsScreen>
               ),
               const SizedBox(width: 10),
               const Text(
-                'Academic Library — Main stacks',
+                'Academic Library - Main stacks',
                 style: TextStyle(
                   color: AppColors.warning,
                   fontWeight: FontWeight.w700,
@@ -292,123 +278,19 @@ class _BookDetailsScreenState extends State<BookDetailsScreen>
             ],
           ),
           const SizedBox(height: 16),
-          // Holdings table
-          Container(
-            decoration: BoxDecoration(
-              color: AppColors.card,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  headingRowColor: WidgetStateProperty.all(AppColors.surface),
-                  headingTextStyle: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textSecondary,
-                  ),
-                  dataTextStyle: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textPrimary,
-                  ),
-                  columnSpacing: 16,
-                  horizontalMargin: 14,
-                  dataRowMinHeight: 56,
-                  dataRowMaxHeight: 72,
-                  columns: const [
-                    DataColumn(label: Text('Accession #')),
-                    DataColumn(label: Text('Call #')),
-                    DataColumn(label: Text('Vol / Part #')),
-                    DataColumn(label: Text('Copy #')),
-                    DataColumn(label: Text('Collection')),
-                    DataColumn(label: Text('Shelving location')),
-                    DataColumn(label: Text('Circulation type')),
-                    DataColumn(label: Text('Circ. status')),
-                    DataColumn(label: Text('Barcode')),
-                    DataColumn(label: Text('RFID')),
-                    DataColumn(label: Text('Add to cart')),
-                  ],
-                  rows: _holdings.map((h) {
-                    final isAvailable = h['circStatus'] == 'On-Shelf';
-                    return DataRow(
-                      cells: [
-                        DataCell(Text(h['accession'] ?? '')),
-                        DataCell(Text(
-                          h['callNumber'] ?? '',
-                          style: const TextStyle(fontFamily: 'monospace'),
-                        )),
-                        DataCell(Text(h['volume'] ?? '')),
-                        DataCell(Text(h['copy'] ?? '')),
-                        DataCell(Text(h['collection'] ?? '')),
-                        DataCell(Text(h['shelving'] ?? '')),
-                        DataCell(Text(h['circType'] ?? '')),
-                        DataCell(
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isAvailable
-                                  ? AppColors.successLight
-                                  : AppColors.dangerLight,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              h['circStatus'] ?? '',
-                              style: TextStyle(
-                                color: isAvailable
-                                    ? AppColors.success
-                                    : AppColors.danger,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ),
-                        ),
-                        DataCell(Text(h['barcode'] ?? '')),
-                        DataCell(Text(h['rfid'] ?? '')),
-                        DataCell(
-                          SizedBox(
-                            height: 34,
-                            child: ElevatedButton(
-                              onPressed: isAvailable ? () {} : null,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primary,
-                                disabledBackgroundColor:
-                                    AppColors.textMuted.withValues(alpha: 0.3),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                ),
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              child: const Text(
-                                'Add to cart',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  }).toList(),
+          if (copies.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Text(
+                  'No holdings found.',
+                  style: TextStyle(color: AppColors.textMuted),
                 ),
               ),
-            ),
-          ),
+            )
+          else
+            _buildHoldingsTable(copies),
           const SizedBox(height: 24),
-          // Bottom action bar
           Row(
             children: [
               Expanded(
@@ -426,7 +308,9 @@ class _BookDetailsScreenState extends State<BookDetailsScreen>
                     ],
                   ),
                   child: ElevatedButton.icon(
-                    onPressed: () {},
+                    onPressed: _details!.book.isAvailable
+                        ? () => _showAddToCartMessage(_details!.book.id)
+                        : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.transparent,
                       shadowColor: Colors.transparent,
@@ -472,7 +356,128 @@ class _BookDetailsScreenState extends State<BookDetailsScreen>
     );
   }
 
+  Widget _buildHoldingsTable(List<BookCopy> copies) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            headingRowColor: WidgetStateProperty.all(AppColors.surface),
+            headingTextStyle: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textSecondary,
+            ),
+            dataTextStyle: const TextStyle(
+              fontSize: 11,
+              color: AppColors.textPrimary,
+            ),
+            columnSpacing: 16,
+            horizontalMargin: 14,
+            dataRowMinHeight: 56,
+            dataRowMaxHeight: 72,
+            columns: const [
+              DataColumn(label: Text('Accession #')),
+              DataColumn(label: Text('Call #')),
+              DataColumn(label: Text('Vol / Part #')),
+              DataColumn(label: Text('Copy #')),
+              DataColumn(label: Text('Collection')),
+              DataColumn(label: Text('Shelving location')),
+              DataColumn(label: Text('Circulation type')),
+              DataColumn(label: Text('Circ. status')),
+              DataColumn(label: Text('Barcode')),
+              DataColumn(label: Text('RFID')),
+              DataColumn(label: Text('Add to cart')),
+            ],
+            rows: copies.map((copy) {
+              final isAvailable = copy.isAvailable;
+              return DataRow(
+                cells: [
+                  DataCell(Text(copy.accessionNo)),
+                  DataCell(
+                    Text(
+                      copy.callNumber,
+                      style: const TextStyle(fontFamily: 'monospace'),
+                    ),
+                  ),
+                  DataCell(Text(copy.volume)),
+                  const DataCell(Text('')),
+                  DataCell(Text(copy.collection)),
+                  DataCell(Text(copy.shelvingLocation)),
+                  DataCell(Text(copy.circulationType)),
+                  DataCell(_statusCell(copy.circulationStatus, isAvailable)),
+                  DataCell(Text(copy.barcode)),
+                  DataCell(Text(copy.rfid)),
+                  DataCell(
+                    SizedBox(
+                      height: 34,
+                      child: ElevatedButton(
+                        onPressed: isAvailable
+                            ? () => _showAddToCartMessage(copy.id)
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          disabledBackgroundColor: AppColors.textMuted
+                              .withValues(alpha: 0.3),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text(
+                          'Add to cart',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _statusCell(String label, bool isAvailable) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: isAvailable ? AppColors.successLight : AppColors.dangerLight,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: isAvailable ? AppColors.success : AppColors.danger,
+          fontWeight: FontWeight.w600,
+          fontSize: 11,
+        ),
+      ),
+    );
+  }
+
   Widget _buildDescriptionTab() {
+    final details = _details!;
+    final book = details.book;
+    final description = details.description;
+    final about = description.generalNote.isNotEmpty
+        ? description.generalNote
+        : 'No description available.';
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -488,7 +493,7 @@ class _BookDetailsScreenState extends State<BookDetailsScreen>
           ),
           const SizedBox(height: 12),
           Text(
-            mockBook.description,
+            about,
             style: const TextStyle(
               color: AppColors.textSecondary,
               fontSize: 14,
@@ -496,19 +501,27 @@ class _BookDetailsScreenState extends State<BookDetailsScreen>
             ),
           ),
           const SizedBox(height: 24),
-          _buildDescRow('Title', mockBook.title),
-          _buildDescRow('Author', mockBook.author),
-          _buildDescRow('Publisher', 'Routledge'),
-          _buildDescRow('Year', mockBook.year),
-          _buildDescRow('Format', 'Printed'),
-          _buildDescRow('Call Number', mockBook.callNumber),
-          _buildDescRow('Copies', '${mockBook.copies}'),
+          _buildDescRow('Title', book.title),
+          _buildDescRow('Author', book.author),
+          _buildDescRow('Published', description.published),
+          _buildDescRow('Year', book.year == 0 ? '' : '${book.year}'),
+          _buildDescRow('Format', description.format),
+          _buildDescRow('Edition', description.edition),
+          _buildDescRow('ISBN', description.isbn),
+          _buildDescRow('Call Number', book.callNumber),
+          _buildDescRow('Physical', description.physicalDescription),
+          _buildDescRow('Bibliography', description.bibliography),
+          _buildDescRow('Subject', description.subjectTopic),
+          _buildDescRow('Genre', description.genre),
+          _buildDescRow('Copies', '${book.totalCopies}'),
         ],
       ),
     );
   }
 
   Widget _buildDescRow(String label, String value) {
+    if (value.isEmpty) return const SizedBox.shrink();
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: const BoxDecoration(
@@ -521,10 +534,7 @@ class _BookDetailsScreenState extends State<BookDetailsScreen>
             width: 110,
             child: Text(
               label,
-              style: const TextStyle(
-                color: AppColors.textMuted,
-                fontSize: 13,
-              ),
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
             ),
           ),
           Expanded(
@@ -543,19 +553,18 @@ class _BookDetailsScreenState extends State<BookDetailsScreen>
   }
 
   Widget _buildMarcViewTab() {
+    final description = _details!.description;
     final marcFields = [
-      ('020', 'ISBN', '9781138209886'),
-      ('100', 'Main Entry - Personal Name', 'Cohen, Louis, author.'),
-      ('245', 'Title Statement',
-          'Research methods in education / Louis Cohen, Lawrence Manion, Keith Morrison.'),
-      ('250', 'Edition Statement', 'Eighth edition.'),
-      ('264', 'Production/Publication',
-          'London ; New York : Routledge, 2018.'),
-      ('300', 'Physical Description', 'xxxi, 758 pages ; 25 cm'),
-      ('504', 'Bibliography Note',
-          'Includes bibliographical references and index.'),
-      ('650', 'Subject', 'Education — Research — Methodology.'),
-    ];
+      ('020', 'ISBN', description.isbn),
+      ('100', 'Main Entry - Personal Name', description.author),
+      ('245', 'Title Statement', description.title),
+      ('250', 'Edition Statement', description.edition),
+      ('264', 'Production/Publication', description.published),
+      ('300', 'Physical Description', description.physicalDescription),
+      ('504', 'Bibliography Note', description.bibliography),
+      ('650', 'Subject', description.subjectTopic),
+      ('655', 'Genre/Form', description.genre),
+    ].where((field) => field.$3.isNotEmpty).toList();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -565,79 +574,126 @@ class _BookDetailsScreenState extends State<BookDetailsScreen>
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.border),
         ),
-        child: Column(
-          children: marcFields.indexed
-              .map(
-                (entry) => Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: entry.$1.isEven
-                        ? Colors.transparent
-                        : AppColors.surface.withValues(alpha: 0.5),
-                    border: entry.$1 < marcFields.length - 1
-                        ? const Border(
-                            bottom: BorderSide(color: AppColors.border),
-                          )
-                        : null,
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 36,
+        child: marcFields.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.all(20),
+                child: Text(
+                  'No MARC details available.',
+                  style: TextStyle(color: AppColors.textMuted),
+                ),
+              )
+            : Column(
+                children: marcFields.indexed
+                    .map(
+                      (entry) => Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 2,
+                          horizontal: 16,
+                          vertical: 12,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
+                          color: entry.$1.isEven
+                              ? Colors.transparent
+                              : AppColors.surface.withValues(alpha: 0.5),
+                          border: entry.$1 < marcFields.length - 1
+                              ? const Border(
+                                  bottom: BorderSide(color: AppColors.border),
+                                )
+                              : null,
                         ),
-                        child: Text(
-                          entry.$2.$1,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.primary,
-                            fontFamily: 'monospace',
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
+                        child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              entry.$2.$2,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textMuted,
-                                fontWeight: FontWeight.w600,
+                            Container(
+                              width: 36,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                entry.$2.$1,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary,
+                                  fontFamily: 'monospace',
+                                ),
+                                textAlign: TextAlign.center,
                               ),
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              entry.$2.$3,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: AppColors.textPrimary,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    entry.$2.$2,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textMuted,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    entry.$2.$3,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              )
-              .toList(),
-        ),
+                    )
+                    .toList(),
+              ),
       ),
     );
+  }
+
+  void _showAddToCartMessage(String bookId) {
+    _borrowService.addToBorrowCart(bookId);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Added to borrow cart.')));
+  }
+}
+
+class _BookCover extends StatelessWidget {
+  final String? coverUrl;
+
+  const _BookCover({required this.coverUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    if (coverUrl != null && coverUrl!.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Image.network(
+          coverUrl!,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _fallbackCover(),
+        ),
+      );
+    }
+
+    return Image.asset(
+      'assets/defaultBook.png',
+      width: 90,
+      height: 110,
+      fit: BoxFit.contain,
+      errorBuilder: (_, _, _) => _fallbackCover(),
+    );
+  }
+
+  Widget _fallbackCover() {
+    return const Icon(Icons.menu_book_rounded, size: 48, color: Colors.white);
   }
 }
